@@ -34,6 +34,25 @@ export const GithubRunCommand = effectCmd({
     }),
 })
 
+export function buildCommentKeyDigest(key: string): string {
+  return createHash("sha256").update(key).digest("hex")
+}
+
+export function buildCommentAnchor(digest: string): string {
+  return `<!-- opencode:comment-key:sha256:${digest} -->`
+}
+
+export function appendCommentAnchor(body: string, digest: string): string {
+  return `${body}\n${buildCommentAnchor(digest)}`
+}
+
+export function findStickyCommentIds(
+  comments: Array<{ id: number; body?: string | null; user?: { login?: string | null } | null }>,
+  anchor: string,
+): number[] {
+  return comments.filter((comment) => comment.body?.includes(anchor)).map((comment) => comment.id)
+}
+
 export const GithubCommand = cmd({
   command: "github",
   describe: "manage GitHub agent",

@@ -1,3 +1,4 @@
+import { createHash } from "crypto"
 import type { SessionLegacy } from "@opencode-ai/core/session/legacy"
 
 export { parseGitHubRemote } from "@/util/repository"
@@ -27,4 +28,23 @@ export function formatPromptTooLargeError(files: { filename: string; content: st
       ? `\n\nFiles in prompt:\n${files.map((f) => `  - ${f.filename} (${((f.content.length * 0.75) / 1024).toFixed(0)} KB)`).join("\n")}`
       : ""
   return `PROMPT_TOO_LARGE: The prompt exceeds the model's context limit.${fileDetails}`
+}
+
+export function buildCommentKeyDigest(key: string): string {
+  return createHash("sha256").update(key).digest("hex")
+}
+
+export function buildCommentAnchor(digest: string): string {
+  return `<!-- opencode:comment-key:sha256:${digest} -->`
+}
+
+export function appendCommentAnchor(body: string, digest: string): string {
+  return `${body}\n${buildCommentAnchor(digest)}`
+}
+
+export function findStickyCommentIds(
+  comments: Array<{ id: number; body?: string | null; user?: { login?: string | null } | null }>,
+  anchor: string,
+): number[] {
+  return comments.filter((comment) => comment.body?.includes(anchor)).map((comment) => comment.id)
 }
