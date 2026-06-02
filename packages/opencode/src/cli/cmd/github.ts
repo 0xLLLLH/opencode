@@ -201,6 +201,26 @@ export function appendCommentAnchor(body: string, digest: string): string {
   return `${body}\n<!-- opencode:comment-key:sha256:${digest} -->`
 }
 
+/**
+ * Returns matching sticky comment ids in original API order.
+ * A comment matches when it contains `anchor` and is authored by one of
+ * the provided `authorLogins`.
+ */
+export function findStickyCommentIds(
+  comments: Array<{ id: number; body?: string | null; user?: { login?: string | null } | null }>,
+  anchor: string,
+  authorLogins: readonly string[],
+): number[] {
+  const allowedAuthors = new Set(authorLogins)
+  return comments
+    .filter((comment) => {
+      if (!comment.body?.includes(anchor)) return false
+      if (!comment.user?.login) return false
+      return allowedAuthors.has(comment.user.login)
+    })
+    .map((comment) => comment.id)
+}
+
 export const GithubCommand = cmd({
   command: "github",
   describe: "manage GitHub agent",
@@ -507,6 +527,7 @@ export const GithubRunCommand = effectCmd({
       let octoRest: Octokit
       let octoGraph: typeof graphql
       let gitConfig: string
+      let commentAuthorLogin = AGENT_USERNAME
       let session: { id: SessionID; title: string; version: string }
       let shareId: string | undefined
       let exitCode = 0
@@ -558,6 +579,13 @@ export const GithubRunCommand = effectCmd({
         octoGraph = graphql.defaults({
           headers: { authorization: `token ${appToken}` },
         })
+        commentAuthorLogin = await octoRest.rest.users
+          .getAuthenticated()
+          .then((response) => response.data.login)
+          .catch((error) => {
+            console.warn(`Warning: failed to resolve authenticated user login: ${String(error)}`)
+            return AGENT_USERNAME
+          })
 
         const { userPrompt, promptFiles } = await getUserPrompt()
         if (!useGithubToken) {
@@ -1274,14 +1302,12 @@ export const GithubRunCommand = effectCmd({
           issue_number: issueId!,
           per_page: 100,
         })
-        const matches = comments.filter(
-          (c) => c.user?.login === AGENT_USERNAME && c.body?.includes(anchor),
-        )
-        if (matches.length === 0) return undefined
-        if (matches.length > 1) {
-          console.warn(`Warning: found ${matches.length} sticky comments with same key; updating the most recent one`)
+        const matchedIds = findStickyCommentIds(comments, anchor, [AGENT_USERNAME, commentAuthorLogin])
+        if (matchedIds.length === 0) return undefined
+        if (matchedIds.length > 1) {
+          console.warn(`Warning: found ${matchedIds.length} sticky comments with same key; updating the most recent one`)
         }
-        return matches[matches.length - 1].id
+        return matchedIds[matchedIds.length - 1]
       }
 
       async function addReaction(commentType?: "issue" | "pr_review") {

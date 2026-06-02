@@ -5,6 +5,7 @@ import {
   formatPromptTooLargeError,
   buildCommentKeyDigest,
   appendCommentAnchor,
+  findStickyCommentIds,
 } from "../../src/cli/cmd/github"
 import type { MessageV2 } from "../../src/session/message-v2"
 import { SessionID, MessageID, PartID } from "../../src/session/schema"
@@ -254,5 +255,76 @@ describe("appendCommentAnchor", () => {
     const parts = result.split("\n")
     expect(parts[parts.length - 1]).toBe("<!-- opencode:comment-key:sha256:digest -->")
     expect(parts[parts.length - 2]).toBe("content")
+  })
+})
+
+describe("findStickyCommentIds", () => {
+  test("matches comments by anchor and opencode bot author", () => {
+    const ids = findStickyCommentIds(
+      [
+        {
+          id: 1,
+          user: { login: "opencode-agent[bot]" },
+          body: "body\n<!-- opencode:comment-key:sha256:abc -->",
+        },
+      ],
+      "<!-- opencode:comment-key:sha256:abc -->",
+      ["opencode-agent[bot]"],
+    )
+
+    expect(ids).toEqual([1])
+  })
+
+  test("matches comments by anchor and github-actions bot author", () => {
+    const ids = findStickyCommentIds(
+      [
+        {
+          id: 2,
+          user: { login: "github-actions[bot]" },
+          body: "body\n<!-- opencode:comment-key:sha256:abc -->",
+        },
+      ],
+      "<!-- opencode:comment-key:sha256:abc -->",
+      ["opencode-agent[bot]", "github-actions[bot]"],
+    )
+
+    expect(ids).toEqual([2])
+  })
+
+  test("does not match comments from other authors", () => {
+    const ids = findStickyCommentIds(
+      [
+        {
+          id: 3,
+          user: { login: "someone-else" },
+          body: "body\n<!-- opencode:comment-key:sha256:abc -->",
+        },
+      ],
+      "<!-- opencode:comment-key:sha256:abc -->",
+      ["opencode-agent[bot]", "github-actions[bot]"],
+    )
+
+    expect(ids).toEqual([])
+  })
+
+  test("returns matching ids in API order", () => {
+    const ids = findStickyCommentIds(
+      [
+        {
+          id: 4,
+          user: { login: "github-actions[bot]" },
+          body: "body\n<!-- opencode:comment-key:sha256:abc -->",
+        },
+        {
+          id: 5,
+          user: { login: "github-actions[bot]" },
+          body: "body\n<!-- opencode:comment-key:sha256:abc -->",
+        },
+      ],
+      "<!-- opencode:comment-key:sha256:abc -->",
+      ["github-actions[bot]"],
+    )
+
+    expect(ids).toEqual([4, 5])
   })
 })
