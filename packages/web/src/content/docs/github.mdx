@@ -184,6 +184,7 @@ jobs:
         with:
           model: anthropic/claude-sonnet-4-20250514
           use_github_token: true
+          comment_key: review-summary
           prompt: |
             Review this pull request:
             - Check for code quality issues
@@ -192,6 +193,8 @@ jobs:
 ```
 
 For `pull_request` events, if no `prompt` is provided, OpenCode defaults to reviewing the pull request.
+
+The `comment_key: review-summary` setting ensures that each new push to the PR updates the same review comment rather than creating a new one. See [Sticky comments](#sticky-comments) for more details.
 
 ---
 
@@ -266,6 +269,48 @@ Override the default prompt to customize OpenCode's behavior for your workflow.
 ```
 
 This is useful for enforcing specific review criteria, coding standards, or focus areas relevant to your project.
+
+---
+
+## Sticky comments
+
+By default, OpenCode creates a new comment every time it runs. When you use automated workflows (such as reviewing every PR push), this can produce many similar comments on the same PR.
+
+Set the `comment_key` input to identify a specific comment. On each run, OpenCode will look for an existing comment it posted with the same key and update it in place. If no matching comment is found, it creates a new one.
+
+```yaml title=".github/workflows/opencode-review.yml"
+- uses: anomalyco/opencode/github@latest
+  with:
+    model: anthropic/claude-sonnet-4-20250514
+    use_github_token: true
+    prompt: |
+      Review this pull request.
+    comment_key: review-summary
+```
+
+With this configuration, each new push to the PR updates the same review comment rather than adding a new one.
+
+### Choosing a key
+
+The key can be any non-empty string. Use a fixed value when you want one persistent comment per PR, or compose it from GitHub context values to create separate comments for different workflows or jobs.
+
+| Use case | Recommended key |
+| --- | --- |
+| Single review workflow | `review-summary` |
+| Multiple workflows on the same PR | `${{ github.workflow }}` |
+| Multiple jobs within one workflow | `${{ github.workflow }}-${{ github.job }}` |
+
+### How it works
+
+OpenCode embeds a hidden HTML anchor in the comment body that encodes a hash of the key:
+
+```html
+<!-- opencode:comment-key:sha256:<digest> -->
+```
+
+On subsequent runs, OpenCode searches the issue or PR for a bot comment containing the matching anchor, then updates that comment. Because the key is hashed, arbitrary strings including spaces and special characters are safe to use.
+
+Changing the `comment_key` value starts a new comment track — the previous comment is left intact and a new one is created.
 
 ---
 
