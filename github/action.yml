@@ -38,6 +38,10 @@ inputs:
     description: "Base URL for OIDC token exchange API. Only required when running a custom GitHub App install. Defaults to https://api.opencode.ai"
     required: false
 
+  comment_key:
+    description: "A key used to identify a specific comment. When set, opencode will look for an existing bot comment with this key on the current issue or PR and update it; if no matching comment is found, a new one is created. Use a fixed string (e.g. 'review-summary') or compose with GitHub context expressions (e.g. the workflow name and job name). Leave unset to always create a new comment."
+    required: false
+
 runs:
   using: "composite"
   steps:
@@ -77,3 +81,4 @@ runs:
         MENTIONS: ${{ inputs.mentions }}
         VARIANT: ${{ inputs.variant }}
         OIDC_BASE_URL: ${{ inputs.oidc_base_url }}
+        COMMENT_KEY: ${{ inputs.comment_key }}

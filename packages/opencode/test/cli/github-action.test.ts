@@ -1,6 +1,12 @@
 import { test, expect, describe } from "bun:test"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { extractResponseText, formatPromptTooLargeError } from "../../src/cli/cmd/github"
+import {
+  buildCommentKeyDigest,
+  buildCommentAnchor,
+  appendCommentAnchor,
+  findStickyCommentIds,
+} from "../../src/cli/cmd/github.handler"
 import type { MessageV2 } from "../../src/session/message-v2"
 import { SessionID, MessageID, PartID } from "../../src/session/schema"
 
@@ -195,5 +201,118 @@ describe("formatPromptTooLargeError", () => {
     expect(result).toInclude("img1.png (3 KB)")
     expect(result).toInclude("img2.jpg (6 KB)")
     expect(result).toInclude("img3.gif (9 KB)")
+  })
+})
+
+describe("buildCommentKeyDigest", () => {
+  test("returns a 64-character hex sha256 digest", () => {
+    const digest = buildCommentKeyDigest("review-summary")
+    expect(digest).toHaveLength(64)
+    expect(digest).toMatch(/^[0-9a-f]+$/)
+  })
+
+  test("same key always produces same digest", () => {
+    expect(buildCommentKeyDigest("my-key")).toBe(buildCommentKeyDigest("my-key"))
+  })
+
+  test("different keys produce different digests", () => {
+    expect(buildCommentKeyDigest("key-a")).not.toBe(buildCommentKeyDigest("key-b"))
+  })
+
+  test("special characters and spaces are handled without error", () => {
+    expect(() => buildCommentKeyDigest("hello world & <test> --> done")).not.toThrow()
+  })
+
+  test("empty string produces a stable digest (callers decide whether to use it)", () => {
+    const digest = buildCommentKeyDigest("")
+    expect(digest).toHaveLength(64)
+  })
+})
+
+describe("buildCommentAnchor", () => {
+  test("returns the standard sticky anchor format", () => {
+    expect(buildCommentAnchor("abc123")).toBe("<!-- opencode:comment-key:sha256:abc123 -->")
+  })
+})
+
+describe("appendCommentAnchor", () => {
+  test("appends anchor on a new line at the end", () => {
+    const result = appendCommentAnchor("hello", "abc123")
+    expect(result).toBe(`hello\n${buildCommentAnchor("abc123")}`)
+  })
+
+  test("anchor contains the exact digest", () => {
+    const digest = buildCommentKeyDigest("review-summary")
+    const result = appendCommentAnchor("body text", digest)
+    expect(result).toContain(buildCommentAnchor(digest))
+  })
+
+  test("anchor is always at the very end of the body", () => {
+    const result = appendCommentAnchor("line1\nline2", "d1g3st")
+    expect(result.endsWith("-->")).toBe(true)
+  })
+
+  test("body with no trailing newline gets exactly one newline before anchor", () => {
+    const result = appendCommentAnchor("content", "digest")
+    const parts = result.split("\n")
+    expect(parts[parts.length - 1]).toBe(buildCommentAnchor("digest"))
+    expect(parts[parts.length - 2]).toBe("content")
+  })
+})
+
+describe("findStickyCommentIds", () => {
+  test("matches comments by anchor regardless of author", () => {
+    const ids = findStickyCommentIds(
+      [
+        {
+          id: 1,
+          user: { login: "opencode-agent[bot]" },
+          body: `body\n${buildCommentAnchor("abc")}`,
+        },
+        {
+          id: 2,
+          user: { login: "someone-else" },
+          body: `body\n${buildCommentAnchor("abc")}`,
+        },
+      ],
+      buildCommentAnchor("abc"),
+    )
+
+    expect(ids).toEqual([1, 2])
+  })
+
+  test("does not match comments without anchor", () => {
+    const ids = findStickyCommentIds(
+      [
+        {
+          id: 3,
+          user: { login: "someone-else" },
+          body: "body without sticky anchor",
+        },
+      ],
+      buildCommentAnchor("abc"),
+    )
+
+    expect(ids).toEqual([])
+  })
+
+  test("returns matching ids in API order", () => {
+    const ids = findStickyCommentIds(
+      [
+        {
+          id: 4,
+          user: { login: "github-actions[bot]" },
+          body: `body\n${buildCommentAnchor("abc")}`,
+        },
+        {
+          id: 5,
+          user: { login: "github-actions[bot]" },
+          body: `body\n${buildCommentAnchor("abc")}`,
+        },
+      ],
+      buildCommentAnchor("abc"),
+    )
+
+    expect(ids).toEqual([4, 5])
   })
 })

@@ -1,4 +1,5 @@
 import path from "path"
+import { createHash } from "crypto"
 import { exec } from "child_process"
 import { Filesystem } from "@/util/filesystem"
 import * as prompts from "@clack/prompts"
@@ -151,6 +152,25 @@ const SUPPORTED_EVENTS = [...USER_EVENTS, ...REPO_EVENTS] as const
 
 type UserEvent = (typeof USER_EVENTS)[number]
 type RepoEvent = (typeof REPO_EVENTS)[number]
+
+export function buildCommentKeyDigest(key: string): string {
+  return createHash("sha256").update(key).digest("hex")
+}
+
+export function buildCommentAnchor(digest: string): string {
+  return `<!-- opencode:comment-key:sha256:${digest} -->`
+}
+
+export function appendCommentAnchor(body: string, digest: string): string {
+  return `${body}\n${buildCommentAnchor(digest)}`
+}
+
+export function findStickyCommentIds(
+  comments: Array<{ id: number; body?: string | null; user?: { login?: string | null } | null }>,
+  anchor: string,
+): number[] {
+  return comments.filter((comment) => comment.body?.includes(anchor)).map((comment) => comment.id)
+}
 
 export const githubInstall = Effect.fn("Cli.github.install")(function* () {
   const maybeCtx = yield* InstanceRef
@@ -573,7 +593,7 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
             await pushToLocalBranch(summary, uncommittedChanges)
           }
           const hasShared = prData.comments.nodes.some((c) => c.body.includes(`${shareBaseUrl}/s/${shareId}`))
-          await createComment(`${response}${footer({ image: !hasShared })}`)
+          await publishComment(`${response}${footer({ image: !hasShared })}`)
           await removeReaction(commentType)
         }
         // Fork PR
@@ -591,7 +611,7 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
             await pushToForkBranch(summary, prData, uncommittedChanges)
           }
           const hasShared = prData.comments.nodes.some((c) => c.body.includes(`${shareBaseUrl}/s/${shareId}`))
-          await createComment(`${response}${footer({ image: !hasShared })}`)
+          await publishComment(`${response}${footer({ image: !hasShared })}`)
           await removeReaction(commentType)
         }
       }
@@ -606,7 +626,7 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
         if (switched) {
           // Agent switched branches (likely created its own branch/PR).
           // Don't push the stale infrastructure branch — just comment.
-          await createComment(`${response}${footer({ image: true })}`)
+          await publishComment(`${response}${footer({ image: true })}`)
           await removeReaction(commentType)
         } else if (dirty) {
           const summary = await summarize(response)
@@ -618,13 +638,13 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
             `${response}\n\nCloses #${issueId}${footer({ image: true })}`,
           )
           if (pr) {
-            await createComment(`Created PR #${pr}${footer({ image: true })}`)
+            await publishComment(`Created PR #${pr}${footer({ image: true })}`)
           } else {
-            await createComment(`${response}${footer({ image: true })}`)
+            await publishComment(`${response}${footer({ image: true })}`)
           }
           await removeReaction(commentType)
         } else {
-          await createComment(`${response}${footer({ image: true })}`)
+          await publishComment(`${response}${footer({ image: true })}`)
           await removeReaction(commentType)
         }
       }
@@ -638,7 +658,7 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
         msg = e.message
       }
       if (isUserEvent) {
-        await createComment(`${msg}${footer()}`)
+        await publishComment(`${msg}${footer()}`)
         await removeReaction(commentType)
       }
       core.setFailed(msg)
@@ -1259,6 +1279,47 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
         issue_number: issueId!,
         reaction_id: eyesReaction.id,
       })
+    }
+
+    function commentKeyDigest(): string | undefined {
+      const raw = process.env["COMMENT_KEY"]?.trim()
+      if (!raw) return undefined
+      return buildCommentKeyDigest(raw)
+    }
+
+    async function findExistingStickyComment(digest: string): Promise<number | undefined> {
+      const anchor = buildCommentAnchor(digest)
+      const comments = await octoRest.paginate(octoRest.rest.issues.listComments, {
+        owner,
+        repo,
+        issue_number: issueId!,
+        per_page: 100,
+      })
+      const matchedIds = findStickyCommentIds(comments, anchor)
+      if (matchedIds.length === 0) return undefined
+      if (matchedIds.length > 1) {
+        console.warn(`Warning: found ${matchedIds.length} sticky comments with same key; updating the most recent one`)
+      }
+      return matchedIds[matchedIds.length - 1]
+    }
+
+    async function publishComment(content: string) {
+      const digest = commentKeyDigest()
+      const body = digest ? appendCommentAnchor(content, digest) : content
+      if (!digest) return createComment(body)
+
+      console.log(`Sticky comment enabled (key digest: ${digest})`)
+      const existingId = await findExistingStickyComment(digest)
+      if (existingId) {
+        console.log(`Updating existing sticky comment ${existingId}...`)
+        return await octoRest.rest.issues.updateComment({
+          owner,
+          repo,
+          comment_id: existingId,
+          body,
+        })
+      }
+      return createComment(body)
     }
 
     async function createComment(body: string) {
