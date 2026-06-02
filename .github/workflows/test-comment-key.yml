@@ -35,6 +35,24 @@ jobs:
             "Sticky comment test - run #${{ github.run_number }}, attempt #${{ github.run_attempt }}."
             Do not add anything else.
 
+      - name: Dump opencode log (sticky)
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import glob
+          import os
+
+          files = sorted(glob.glob(os.path.expanduser("~/.local/share/opencode/log/*.log")), key=os.path.getmtime, reverse=True)
+          if not files:
+            print("No opencode log files found")
+            raise SystemExit(0)
+
+          path = files[0]
+          print(f"Latest opencode log: {path}")
+          with open(path, "r", encoding="utf-8", errors="replace") as f:
+            print(f.read())
+          PY
+
   # Baseline: should create a new comment on every push.
   without-comment-key:
     name: Without comment_key (baseline)
@@ -61,3 +79,21 @@ jobs:
             Reply with exactly one sentence:
             "Non-sticky comment test - run #${{ github.run_number }}, attempt #${{ github.run_attempt }}."
             Do not add anything else.
+
+      - name: Dump opencode log (non-sticky)
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import glob
+          import os
+
+          files = sorted(glob.glob(os.path.expanduser("~/.local/share/opencode/log/*.log")), key=os.path.getmtime, reverse=True)
+          if not files:
+            print("No opencode log files found")
+            raise SystemExit(0)
+
+          path = files[0]
+          print(f"Latest opencode log: {path}")
+          with open(path, "r", encoding="utf-8", errors="replace") as f:
+            print(f.read())
+          PY
