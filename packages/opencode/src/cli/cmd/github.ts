@@ -204,22 +204,13 @@ export function appendCommentAnchor(body: string, digest: string): string {
 
 /**
  * Returns matching sticky comment ids in original API order.
- * A comment matches when it contains `anchor` and is authored by one of
- * the provided `authorLogins`.
+ * A comment matches when it contains `anchor`.
  */
 export function findStickyCommentIds(
   comments: Array<{ id: number; body?: string | null; user?: { login?: string | null } | null }>,
   anchor: string,
-  authorLogins: readonly string[],
 ): number[] {
-  const allowedAuthors = new Set(authorLogins)
-  return comments
-    .filter((comment) => {
-      if (!comment.body?.includes(anchor)) return false
-      if (!comment.user?.login) return false
-      return allowedAuthors.has(comment.user.login)
-    })
-    .map((comment) => comment.id)
+  return comments.filter((comment) => comment.body?.includes(anchor)).map((comment) => comment.id)
 }
 
 export const GithubCommand = cmd({
@@ -587,7 +578,6 @@ export const GithubRunCommand = effectCmd({
             console.warn(`Warning: failed to resolve authenticated user login: ${String(error)}`)
             return AGENT_USERNAME
           })
-        console.log(`Using comment author login: ${commentAuthorLogin}`)
 
         const { userPrompt, promptFiles } = await getUserPrompt()
         if (!useGithubToken) {
@@ -1304,19 +1294,7 @@ export const GithubRunCommand = effectCmd({
           issue_number: issueId!,
           per_page: 100,
         })
-        const anchoredComments = comments.filter((comment) => comment.body?.includes(anchor))
-        const matchedIds = findStickyCommentIds(comments, anchor, [
-          AGENT_USERNAME,
-          commentAuthorLogin,
-          GITHUB_ACTIONS_BOT_USERNAME,
-        ])
-        console.log(
-          `Sticky search: ${matchedIds.length}/${anchoredComments.length}/${comments.length} (matched/anchored/total), authors=${JSON.stringify([
-            AGENT_USERNAME,
-            commentAuthorLogin,
-            GITHUB_ACTIONS_BOT_USERNAME,
-          ])}`,
-        )
+        const matchedIds = findStickyCommentIds(comments, anchor)
         if (matchedIds.length === 0) return undefined
         if (matchedIds.length > 1) {
           console.warn(`Warning: found ${matchedIds.length} sticky comments with same key; updating the most recent one`)

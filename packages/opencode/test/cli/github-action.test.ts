@@ -259,7 +259,7 @@ describe("appendCommentAnchor", () => {
 })
 
 describe("findStickyCommentIds", () => {
-  test("matches comments by anchor and opencode bot author", () => {
+  test("matches comments by anchor regardless of author", () => {
     const ids = findStickyCommentIds(
       [
         {
@@ -267,41 +267,28 @@ describe("findStickyCommentIds", () => {
           user: { login: "opencode-agent[bot]" },
           body: "body\n<!-- opencode:comment-key:sha256:abc -->",
         },
-      ],
-      "<!-- opencode:comment-key:sha256:abc -->",
-      ["opencode-agent[bot]"],
-    )
-
-    expect(ids).toEqual([1])
-  })
-
-  test("matches comments by anchor and github-actions bot author", () => {
-    const ids = findStickyCommentIds(
-      [
         {
           id: 2,
-          user: { login: "github-actions[bot]" },
-          body: "body\n<!-- opencode:comment-key:sha256:abc -->",
-        },
-      ],
-      "<!-- opencode:comment-key:sha256:abc -->",
-      ["opencode-agent[bot]", "github-actions[bot]"],
-    )
-
-    expect(ids).toEqual([2])
-  })
-
-  test("does not match comments from other authors", () => {
-    const ids = findStickyCommentIds(
-      [
-        {
-          id: 3,
           user: { login: "someone-else" },
           body: "body\n<!-- opencode:comment-key:sha256:abc -->",
         },
       ],
       "<!-- opencode:comment-key:sha256:abc -->",
-      ["opencode-agent[bot]", "github-actions[bot]"],
+    )
+
+    expect(ids).toEqual([1, 2])
+  })
+
+  test("does not match comments without anchor", () => {
+    const ids = findStickyCommentIds(
+      [
+        {
+          id: 3,
+          user: { login: "someone-else" },
+          body: "body without sticky anchor",
+        },
+      ],
+      "<!-- opencode:comment-key:sha256:abc -->",
     )
 
     expect(ids).toEqual([])
@@ -322,7 +309,6 @@ describe("findStickyCommentIds", () => {
         },
       ],
       "<!-- opencode:comment-key:sha256:abc -->",
-      ["github-actions[bot]"],
     )
 
     expect(ids).toEqual([4, 5])
