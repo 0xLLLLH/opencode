@@ -276,7 +276,7 @@ This is useful for enforcing specific review criteria, coding standards, or focu
 
 By default, OpenCode creates a new comment every time it runs. When you use automated workflows (such as reviewing every PR push), this can produce many similar comments on the same PR.
 
-Set the `comment_key` input to make OpenCode maintain a single comment per issue or PR instead. On each run, OpenCode will look for an existing comment it posted with the same key and update it in place. If no matching comment is found, it creates a new one.
+Set the `comment_key` input to identify a specific comment. On each run, OpenCode will look for an existing comment it posted with the same key and update it in place. If no matching comment is found, it creates a new one.
 
 ```yaml title=".github/workflows/opencode-review.yml"
 - uses: anomalyco/opencode/github@latest
