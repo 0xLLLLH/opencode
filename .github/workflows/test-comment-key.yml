@@ -27,7 +27,7 @@ jobs:
         run: bun run --cwd packages/opencode ./src/index.ts github run
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MODEL: opencode/minimax-m2.5-free
+          MODEL: opencode/minimax-m3-free
           USE_GITHUB_TOKEN: "true"
           COMMENT_KEY: test-sticky
           PROMPT: |
@@ -73,7 +73,7 @@ jobs:
         run: bun run --cwd packages/opencode ./src/index.ts github run
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MODEL: opencode/minimax-m2.5-free
+          MODEL: opencode/minimax-m3-free
           USE_GITHUB_TOKEN: "true"
           PROMPT: |
             Reply with exactly one sentence:
