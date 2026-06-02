@@ -1304,11 +1304,19 @@ export const GithubRunCommand = effectCmd({
           issue_number: issueId!,
           per_page: 100,
         })
+        const anchoredComments = comments.filter((comment) => comment.body?.includes(anchor))
         const matchedIds = findStickyCommentIds(comments, anchor, [
           AGENT_USERNAME,
           commentAuthorLogin,
           GITHUB_ACTIONS_BOT_USERNAME,
         ])
+        console.log(
+          `Sticky search: ${matchedIds.length}/${anchoredComments.length}/${comments.length} (matched/anchored/total), authors=${JSON.stringify([
+            AGENT_USERNAME,
+            commentAuthorLogin,
+            GITHUB_ACTIONS_BOT_USERNAME,
+          ])}`,
+        )
         if (matchedIds.length === 0) return undefined
         if (matchedIds.length > 1) {
           console.warn(`Warning: found ${matchedIds.length} sticky comments with same key; updating the most recent one`)
