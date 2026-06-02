@@ -142,6 +142,7 @@ type IssueQueryResponse = {
 }
 
 const AGENT_USERNAME = "opencode-agent[bot]"
+const GITHUB_ACTIONS_BOT_USERNAME = "github-actions[bot]"
 const AGENT_REACTION = "eyes"
 const WORKFLOW_FILE = ".github/workflows/opencode.yml"
 
@@ -586,6 +587,7 @@ export const GithubRunCommand = effectCmd({
             console.warn(`Warning: failed to resolve authenticated user login: ${String(error)}`)
             return AGENT_USERNAME
           })
+        console.log(`Using comment author login: ${commentAuthorLogin}`)
 
         const { userPrompt, promptFiles } = await getUserPrompt()
         if (!useGithubToken) {
@@ -1302,7 +1304,11 @@ export const GithubRunCommand = effectCmd({
           issue_number: issueId!,
           per_page: 100,
         })
-        const matchedIds = findStickyCommentIds(comments, anchor, [AGENT_USERNAME, commentAuthorLogin])
+        const matchedIds = findStickyCommentIds(comments, anchor, [
+          AGENT_USERNAME,
+          commentAuthorLogin,
+          GITHUB_ACTIONS_BOT_USERNAME,
+        ])
         if (matchedIds.length === 0) return undefined
         if (matchedIds.length > 1) {
           console.warn(`Warning: found ${matchedIds.length} sticky comments with same key; updating the most recent one`)
