@@ -39,7 +39,7 @@ inputs:
     required: false
 
   comment_key:
-    description: "When set, opencode will upsert a single comment per issue/PR using this key instead of creating a new comment on every run. Use a fixed string (e.g. 'review-summary') or compose with GitHub context values (e.g. '${{ github.workflow }}-${{ github.job }}'). Leave unset to keep the default behaviour of creating a new comment each run."
+    description: "A key used to identify a specific comment. When set, opencode will look for an existing bot comment with this key on the current issue or PR and update it; if no matching comment is found, a new one is created. Use a fixed string (e.g. 'review-summary') or compose with GitHub context values (e.g. '${{ github.workflow }}-${{ github.job }}'). Leave unset to always create a new comment."
     required: false
 
 runs:
