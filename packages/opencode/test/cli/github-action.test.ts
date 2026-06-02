@@ -1,6 +1,11 @@
 import { test, expect, describe } from "bun:test"
 import { SessionLegacy } from "@opencode-ai/core/session/legacy"
-import { extractResponseText, formatPromptTooLargeError } from "../../src/cli/cmd/github"
+import {
+  extractResponseText,
+  formatPromptTooLargeError,
+  buildCommentKeyDigest,
+  appendCommentAnchor,
+} from "../../src/cli/cmd/github"
 import type { MessageV2 } from "../../src/session/message-v2"
 import { SessionID, MessageID, PartID } from "../../src/session/schema"
 
@@ -199,5 +204,55 @@ describe("formatPromptTooLargeError", () => {
     expect(result).toInclude("img1.png (3 KB)")
     expect(result).toInclude("img2.jpg (6 KB)")
     expect(result).toInclude("img3.gif (9 KB)")
+  })
+})
+
+describe("buildCommentKeyDigest", () => {
+  test("returns a 64-character hex sha256 digest", () => {
+    const digest = buildCommentKeyDigest("review-summary")
+    expect(digest).toHaveLength(64)
+    expect(digest).toMatch(/^[0-9a-f]+$/)
+  })
+
+  test("same key always produces same digest", () => {
+    expect(buildCommentKeyDigest("my-key")).toBe(buildCommentKeyDigest("my-key"))
+  })
+
+  test("different keys produce different digests", () => {
+    expect(buildCommentKeyDigest("key-a")).not.toBe(buildCommentKeyDigest("key-b"))
+  })
+
+  test("special characters and spaces are handled without error", () => {
+    expect(() => buildCommentKeyDigest("hello world & <test> --> done")).not.toThrow()
+  })
+
+  test("empty string produces a stable digest (callers decide whether to use it)", () => {
+    const digest = buildCommentKeyDigest("")
+    expect(digest).toHaveLength(64)
+  })
+})
+
+describe("appendCommentAnchor", () => {
+  test("appends anchor on a new line at the end", () => {
+    const result = appendCommentAnchor("hello", "abc123")
+    expect(result).toBe("hello\n<!-- opencode:comment-key:sha256:abc123 -->")
+  })
+
+  test("anchor contains the exact digest", () => {
+    const digest = buildCommentKeyDigest("review-summary")
+    const result = appendCommentAnchor("body text", digest)
+    expect(result).toContain(`<!-- opencode:comment-key:sha256:${digest} -->`)
+  })
+
+  test("anchor is always at the very end of the body", () => {
+    const result = appendCommentAnchor("line1\nline2", "d1g3st")
+    expect(result.endsWith("-->")).toBe(true)
+  })
+
+  test("body with no trailing newline gets exactly one newline before anchor", () => {
+    const result = appendCommentAnchor("content", "digest")
+    const parts = result.split("\n")
+    expect(parts[parts.length - 1]).toBe("<!-- opencode:comment-key:sha256:digest -->")
+    expect(parts[parts.length - 2]).toBe("content")
   })
 })

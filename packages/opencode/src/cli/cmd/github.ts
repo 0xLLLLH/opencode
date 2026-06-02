@@ -1,4 +1,5 @@
 import path from "path"
+import { createHash } from "crypto"
 import { SessionLegacy } from "@opencode-ai/core/session/legacy"
 import { exec } from "child_process"
 import { Filesystem } from "@/util/filesystem"
@@ -181,6 +182,23 @@ export function formatPromptTooLargeError(files: { filename: string; content: st
       ? `\n\nFiles in prompt:\n${files.map((f) => `  - ${f.filename} (${((f.content.length * 0.75) / 1024).toFixed(0)} KB)`).join("\n")}`
       : ""
   return `PROMPT_TOO_LARGE: The prompt exceeds the model's context limit.${fileDetails}`
+}
+
+/**
+ * Returns the sha256 hex digest of the given comment key string.
+ * Used as a stable, safe anchor identifier embedded in comment bodies.
+ */
+export function buildCommentKeyDigest(key: string): string {
+  return createHash("sha256").update(key).digest("hex")
+}
+
+/**
+ * Appends a hidden HTML comment anchor to body so that future runs can
+ * locate and update the same comment via findExistingStickyComment.
+ * The anchor is placed on its own line at the very end.
+ */
+export function appendCommentAnchor(body: string, digest: string): string {
+  return `${body}\n<!-- opencode:comment-key:sha256:${digest} -->`
 }
 
 export const GithubCommand = cmd({
@@ -630,7 +648,7 @@ export const GithubRunCommand = effectCmd({
               await pushToLocalBranch(summary, uncommittedChanges)
             }
             const hasShared = prData.comments.nodes.some((c) => c.body.includes(`${shareBaseUrl}/s/${shareId}`))
-            await createComment(`${response}${footer({ image: !hasShared })}`)
+            await publishComment(`${response}${footer({ image: !hasShared })}`)
             await removeReaction(commentType)
           }
           // Fork PR
@@ -648,7 +666,7 @@ export const GithubRunCommand = effectCmd({
               await pushToForkBranch(summary, prData, uncommittedChanges)
             }
             const hasShared = prData.comments.nodes.some((c) => c.body.includes(`${shareBaseUrl}/s/${shareId}`))
-            await createComment(`${response}${footer({ image: !hasShared })}`)
+            await publishComment(`${response}${footer({ image: !hasShared })}`)
             await removeReaction(commentType)
           }
         }
@@ -663,7 +681,7 @@ export const GithubRunCommand = effectCmd({
           if (switched) {
             // Agent switched branches (likely created its own branch/PR).
             // Don't push the stale infrastructure branch — just comment.
-            await createComment(`${response}${footer({ image: true })}`)
+            await publishComment(`${response}${footer({ image: true })}`)
             await removeReaction(commentType)
           } else if (dirty) {
             const summary = await summarize(response)
@@ -675,13 +693,13 @@ export const GithubRunCommand = effectCmd({
               `${response}\n\nCloses #${issueId}${footer({ image: true })}`,
             )
             if (pr) {
-              await createComment(`Created PR #${pr}${footer({ image: true })}`)
+              await publishComment(`Created PR #${pr}${footer({ image: true })}`)
             } else {
-              await createComment(`${response}${footer({ image: true })}`)
+              await publishComment(`${response}${footer({ image: true })}`)
             }
             await removeReaction(commentType)
           } else {
-            await createComment(`${response}${footer({ image: true })}`)
+            await publishComment(`${response}${footer({ image: true })}`)
             await removeReaction(commentType)
           }
         }
@@ -695,7 +713,7 @@ export const GithubRunCommand = effectCmd({
           msg = e.message
         }
         if (isUserEvent) {
-          await createComment(`${msg}${footer()}`)
+          await publishComment(`${msg}${footer()}`)
           await removeReaction(commentType)
         }
         core.setFailed(msg)
@@ -1234,6 +1252,38 @@ export const GithubRunCommand = effectCmd({
         if (!["admin", "write"].includes(permission)) throw new Error(`User ${actor} does not have write permissions`)
       }
 
+      // Returns the sha256 hex digest of COMMENT_KEY (trimmed), or undefined when
+      // COMMENT_KEY is absent or blank.  Used as the stable upsert key so that
+      // arbitrary user-supplied strings (spaces, special chars, etc.) never
+      // break the hidden HTML anchor embedded in comment bodies.
+      function commentKeyDigest(): string | undefined {
+        const raw = process.env["COMMENT_KEY"]?.trim()
+        if (!raw) return undefined
+        return buildCommentKeyDigest(raw)
+      }
+
+      // Searches the current issue/PR thread for a bot comment whose body
+      // contains the anchor for `digest`.  Returns the comment id when found,
+      // or undefined otherwise.  If more than one matching comment is found the
+      // most-recently created one wins and a warning is logged.
+      async function findExistingStickyComment(digest: string): Promise<number | undefined> {
+        const anchor = `<!-- opencode:comment-key:sha256:${digest} -->`
+        const comments = await octoRest.paginate(octoRest.rest.issues.listComments, {
+          owner,
+          repo,
+          issue_number: issueId!,
+          per_page: 100,
+        })
+        const matches = comments.filter(
+          (c) => c.user?.login === AGENT_USERNAME && c.body?.includes(anchor),
+        )
+        if (matches.length === 0) return undefined
+        if (matches.length > 1) {
+          console.warn(`Warning: found ${matches.length} sticky comments with same key; updating the most recent one`)
+        }
+        return matches[matches.length - 1].id
+      }
+
       async function addReaction(commentType?: "issue" | "pr_review") {
         // Only called for non-schedule events, so triggerCommentId is defined
         console.log("Adding reaction...")
@@ -1329,6 +1379,30 @@ export const GithubRunCommand = effectCmd({
           issue_number: issueId!,
           body,
         })
+      }
+
+      // publishComment is the single exit point for all bot comments.
+      // When COMMENT_KEY is set it performs an upsert: it searches the current
+      // issue/PR thread for a previously published comment with a matching
+      // hidden anchor, updates it if found, and creates a new one otherwise.
+      // When COMMENT_KEY is not set the behaviour is identical to createComment.
+      async function publishComment(content: string) {
+        const digest = commentKeyDigest()
+        const body = digest ? appendCommentAnchor(content, digest) : content
+        if (!digest) return createComment(body)
+
+        console.log(`Sticky comment enabled (key digest: ${digest})`)
+        const existingId = await findExistingStickyComment(digest)
+        if (existingId) {
+          console.log(`Updating existing sticky comment ${existingId}...`)
+          return await octoRest.rest.issues.updateComment({
+            owner,
+            repo,
+            comment_id: existingId,
+            body,
+          })
+        }
+        return createComment(body)
       }
 
       async function createPR(base: string, branch: string, title: string, body: string): Promise<number | null> {
