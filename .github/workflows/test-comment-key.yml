@@ -1,0 +1,51 @@
+name: test-comment-key
+
+on:
+  pull_request:
+    branches:
+      - dev
+    types: [opened, synchronize]
+
+jobs:
+  # Verify sticky behaviour: running twice should update the same comment.
+  with-comment-key:
+    name: With comment_key
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run opencode (sticky)
+        uses: ./github
+        with:
+          model: opencode/minimax-m2.5-free
+          use_github_token: true
+          comment_key: test-sticky
+          prompt: |
+            Reply with exactly one sentence:
+            "Sticky comment test — run #${{ github.run_number }}, attempt #${{ github.run_attempt }}."
+            Do not add anything else.
+
+  # Baseline: should create a new comment on every push.
+  without-comment-key:
+    name: Without comment_key (baseline)
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run opencode (non-sticky)
+        uses: ./github
+        with:
+          model: opencode/minimax-m2.5-free
+          use_github_token: true
+          prompt: |
+            Reply with exactly one sentence:
+            "Non-sticky comment test — run #${{ github.run_number }}, attempt #${{ github.run_attempt }}."
+            Do not add anything else.
