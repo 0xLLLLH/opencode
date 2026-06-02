@@ -1313,7 +1313,16 @@ export const GithubRunCommand = effectCmd({
 
       async function removeReaction(commentType?: "issue" | "pr_review") {
         // Only called for non-schedule events, so triggerCommentId is defined
+        // Reaction cleanup is best-effort: don't fail the action if it errors
         console.log("Removing reaction...")
+        try {
+          await removeReactionInner(commentType)
+        } catch (e) {
+          console.warn(`Warning: failed to remove reaction: ${e instanceof Error ? e.message : String(e)}`)
+        }
+      }
+
+      async function removeReactionInner(commentType?: "issue" | "pr_review") {
         if (triggerCommentId) {
           if (commentType === "pr_review") {
             const reactions = await octoRest.rest.reactions.listForPullRequestReviewComment({
