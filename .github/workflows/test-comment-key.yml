@@ -12,14 +12,19 @@ jobs:
     name: With comment_key
     runs-on: ubuntu-latest
     permissions:
-      issues: write
-      pull-requests: write
+      id-token: write
       contents: read
+      pull-requests: write
+      issues: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Run opencode (sticky)
         uses: ./github
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: opencode/minimax-m2.5-free
           use_github_token: true
@@ -34,14 +39,19 @@ jobs:
     name: Without comment_key (baseline)
     runs-on: ubuntu-latest
     permissions:
-      issues: write
-      pull-requests: write
+      id-token: write
       contents: read
+      pull-requests: write
+      issues: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Run opencode (non-sticky)
         uses: ./github
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: opencode/minimax-m2.5-free
           use_github_token: true
