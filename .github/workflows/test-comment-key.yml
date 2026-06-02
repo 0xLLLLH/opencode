@@ -1,0 +1,99 @@
+name: test-comment-key
+
+on:
+  pull_request:
+    branches:
+      - dev
+    types: [opened, synchronize, reopened, labeled]
+
+jobs:
+  # Verify sticky behaviour: running twice should update the same comment.
+  with-comment-key:
+    name: With comment_key
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Run opencode from source (sticky)
+        run: bun run --cwd packages/opencode ./src/index.ts github run
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODEL: opencode/minimax-m3-free
+          USE_GITHUB_TOKEN: "true"
+          COMMENT_KEY: test-sticky
+          PROMPT: |
+            Reply with exactly one sentence:
+            "Sticky comment test - run #${{ github.run_number }}, attempt #${{ github.run_attempt }}."
+            Do not add anything else.
+
+      - name: Dump opencode log (sticky)
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import glob
+          import os
+
+          files = sorted(glob.glob(os.path.expanduser("~/.local/share/opencode/log/*.log")), key=os.path.getmtime, reverse=True)
+          if not files:
+            print("No opencode log files found")
+            raise SystemExit(0)
+
+          path = files[0]
+          print(f"Latest opencode log: {path}")
+          with open(path, "r", encoding="utf-8", errors="replace") as f:
+            print(f.read())
+          PY
+
+  # Baseline: should create a new comment on every push.
+  without-comment-key:
+    name: Without comment_key (baseline)
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Run opencode from source (non-sticky)
+        run: bun run --cwd packages/opencode ./src/index.ts github run
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODEL: opencode/minimax-m3-free
+          USE_GITHUB_TOKEN: "true"
+          PROMPT: |
+            Reply with exactly one sentence:
+            "Non-sticky comment test - run #${{ github.run_number }}, attempt #${{ github.run_attempt }}."
+            Do not add anything else.
+
+      - name: Dump opencode log (non-sticky)
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import glob
+          import os
+
+          files = sorted(glob.glob(os.path.expanduser("~/.local/share/opencode/log/*.log")), key=os.path.getmtime, reverse=True)
+          if not files:
+            print("No opencode log files found")
+            raise SystemExit(0)
+
+          path = files[0]
+          print(f"Latest opencode log: {path}")
+          with open(path, "r", encoding="utf-8", errors="replace") as f:
+            print(f.read())
+          PY
