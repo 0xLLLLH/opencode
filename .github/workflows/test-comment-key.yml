@@ -4,7 +4,7 @@ on:
   pull_request:
     branches:
       - dev
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened, labeled]
 
 jobs:
   # Verify sticky behaviour: running twice should update the same comment.
